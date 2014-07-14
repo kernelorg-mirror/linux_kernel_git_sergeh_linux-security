@@ -17,6 +17,9 @@
 #include <linux/seq_file.h>
 #include <linux/kernfs.h>
 #include <linux/jump_label.h>
+#include <linux/nsproxy.h>
+#include <linux/types.h>
+#include <linux/ns_common.h>
 
 #include <linux/cgroup-defs.h>
 
@@ -237,6 +240,10 @@ static inline bool cgroup_is_dead(const struct cgroup *cgrp)
 	return !(cgrp->self.flags & CSS_ONLINE);
 }
 
+static inline void css_get(struct cgroup_subsys_state *css);
+static inline void css_put(struct cgroup_subsys_state *css);
+static inline bool css_tryget(struct cgroup_subsys_state *css);
+
 static inline void cgroup_get(struct cgroup *cgrp)
 {
 	WARN_ON_ONCE(cgroup_is_dead(cgrp));
@@ -284,9 +291,11 @@ static inline void cgroup_put(struct cgroup *cgrp)
 			;						\
 		else
 
-/*
- * Inline functions.
- */
+extern char * __must_check cgroup_path_ns(struct cgroup_namespace *ns,
+		struct cgroup *cgrp, char *buf, size_t buflen);
+
+extern char * __must_check cgroup_path(struct cgroup *cgrp, char *buf,
+		size_t buflen);
 
 /**
  * css_get - obtain a reference on the specified css
@@ -520,12 +529,6 @@ static inline struct cgroup_subsys_state *seq_css(struct seq_file *seq)
 static inline int cgroup_name(struct cgroup *cgrp, char *buf, size_t buflen)
 {
 	return kernfs_name(cgrp->kn, buf, buflen);
-}
-
-static inline char * __must_check cgroup_path(struct cgroup *cgrp, char *buf,
-					      size_t buflen)
-{
-	return kernfs_path(cgrp->kn, buf, buflen);
 }
 
 static inline void pr_cont_cgroup_name(struct cgroup *cgrp)

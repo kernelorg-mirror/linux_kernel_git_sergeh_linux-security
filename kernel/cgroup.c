@@ -57,6 +57,8 @@
 #include <linux/vmalloc.h> /* TODO: replace with more sophisticated array */
 #include <linux/kthread.h>
 #include <linux/delay.h>
+#include <linux/proc_ns.h>
+#include <linux/cgroup_namespace.h>
 
 #include <linux/atomic.h>
 
@@ -290,6 +292,15 @@ static bool cgroup_on_dfl(const struct cgroup *cgrp)
 {
 	return cgrp->root == &cgrp_dfl_root;
 }
+struct cgroup_namespace init_cgroup_ns = {
+	.count = {
+		.counter = 1,
+	},
+	.user_ns = &init_user_ns,
+	.ns.ops = &cgroupns_operations,
+	.ns.inum = PROC_CGROUP_INIT_INO,
+	.root_cgrps = &init_css_set,
+};
 
 /* IDR wrappers which synchronize using cgroup_idr_lock */
 static int cgroup_idr_alloc(struct idr *idr, void *ptr, int start, int end,
@@ -749,7 +760,7 @@ static void put_css_set_locked(struct css_set *cset)
 	kfree_rcu(cset, rcu_head);
 }
 
-static void put_css_set(struct css_set *cset)
+void put_css_set(struct css_set *cset)
 {
 	/*
 	 * Ensure that the refcount doesn't hit zero while any readers
@@ -767,7 +778,7 @@ static void put_css_set(struct css_set *cset)
 /*
  * refcounted get/put for css_set objects
  */
-static inline void get_css_set(struct css_set *cset)
+void get_css_set(struct css_set *cset)
 {
 	atomic_inc(&cset->refcount);
 }
@@ -2147,6 +2158,28 @@ static struct file_system_type cgroup_fs_type = {
 	.mount = cgroup_mount,
 	.kill_sb = cgroup_kill_sb,
 };
+
+char * __must_check cgroup_path_ns(struct cgroup_namespace *ns,
+						 struct cgroup *cgrp, char *buf,
+						 size_t buflen)
+{
+	if (ns) {
+		struct cgroup *root;
+		root = cset_cgroup_from_root(ns->root_cgrps, cgrp->root);
+		return kernfs_path_from_node(root->kn, cgrp->kn, buf,
+					     buflen);
+	} else {
+		return kernfs_path(cgrp->kn, buf, buflen);
+	}
+}
+
+char * __must_check cgroup_path(struct cgroup *cgrp, char *buf,
+					      size_t buflen)
+{
+	return cgroup_path_ns(current->nsproxy->cgroup_ns, cgrp, buf,
+				      buflen);
+}
+EXPORT_SYMBOL_GPL(cgroup_path);
 
 /**
  * task_cgroup_path - cgroup path of a task in the first cgroup hierarchy
@@ -5236,6 +5269,8 @@ int __init cgroup_init(void)
 	BUG_ON(percpu_init_rwsem(&cgroup_threadgroup_rwsem));
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup_dfl_base_files));
 	BUG_ON(cgroup_init_cftypes(NULL, cgroup_legacy_base_files));
+
+	get_user_ns(init_cgroup_ns.user_ns);
 
 	mutex_lock(&cgroup_mutex);
 
