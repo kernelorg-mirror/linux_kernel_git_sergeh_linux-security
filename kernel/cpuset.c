@@ -2689,7 +2689,8 @@ int proc_cpuset_show(struct seq_file *m, struct pid_namespace *ns,
 	retval = -ENAMETOOLONG;
 	rcu_read_lock();
 	css = task_css(tsk, cpuset_cgrp_id);
-	p = cgroup_path(css->cgroup, buf, PATH_MAX);
+	p = cgroup_path_ns(css->cgroup, buf, PATH_MAX,
+			   current->nsproxy->cgroup_ns);
 	rcu_read_unlock();
 	if (!p)
 		goto out_free;
