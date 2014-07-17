@@ -326,6 +326,7 @@ static inline bool css_tryget_online(struct cgroup_subsys_state *css)
 		return percpu_ref_tryget_live(&css->refcnt);
 	return true;
 }
+struct cgroup *get_task_cgroup(struct task_struct *task);
 
 /**
  * css_put - put a css reference
