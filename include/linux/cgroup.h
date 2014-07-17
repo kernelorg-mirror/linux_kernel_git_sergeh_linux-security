@@ -17,8 +17,56 @@
 #include <linux/seq_file.h>
 #include <linux/kernfs.h>
 #include <linux/jump_label.h>
+#include <linux/nsproxy.h>
+#include <linux/types.h>
+#include <linux/ns_common.h>
+#include <linux/nsproxy.h>
+#include <linux/user_namespace.h>
 
 #include <linux/cgroup-defs.h>
+
+struct cgroup_namespace {
+	atomic_t		count;
+	struct ns_common	ns;
+	struct user_namespace	*user_ns;
+	struct css_set          *root_cset;
+};
+
+extern struct cgroup_namespace init_cgroup_ns;
+
+#ifdef CONFIG_CGROUPS
+
+void free_cgroup_ns(struct cgroup_namespace *ns);
+
+struct cgroup_namespace *copy_cgroup_ns(unsigned long flags,
+		struct user_namespace *user_ns,
+		struct cgroup_namespace *old_ns);
+
+char * cgroup_path(struct cgroup *cgrp, char *buf, size_t buflen);
+
+#else /* !CONFIG_CGROUPS */
+
+static inline void free_cgroup_ns(struct cgroup_namespace *ns) { }
+static inline struct cgroup_namespace *
+copy_cgroup_ns(unsigned long flags, struct user_namespace *user_ns,
+	       struct cgroup_namespace *old_ns)
+{
+	return old_ns;
+}
+
+#endif /* !CONFIG_CGROUPS */
+
+static inline void get_cgroup_ns(struct cgroup_namespace *ns)
+{
+	if (ns)
+		atomic_inc(&ns->count);
+}
+
+static inline void put_cgroup_ns(struct cgroup_namespace *ns)
+{
+	if (ns && atomic_dec_and_test(&ns->count))
+		free_cgroup_ns(ns);
+}
 
 #ifdef CONFIG_CGROUPS
 
@@ -507,12 +555,6 @@ static inline struct cgroup_subsys_state *seq_css(struct seq_file *seq)
 static inline int cgroup_name(struct cgroup *cgrp, char *buf, size_t buflen)
 {
 	return kernfs_name(cgrp->kn, buf, buflen);
-}
-
-static inline char * __must_check cgroup_path(struct cgroup *cgrp, char *buf,
-					      size_t buflen)
-{
-	return kernfs_path(cgrp->kn, buf, buflen);
 }
 
 static inline void pr_cont_cgroup_name(struct cgroup *cgrp)
