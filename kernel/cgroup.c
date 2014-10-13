@@ -2011,6 +2011,15 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	int ret;
 	int i;
 	bool new_sb;
+	struct cgroup_namespace *ns = current->nsproxy->cgroup_ns;
+
+	get_cgroup_ns(ns);
+
+	/* Check if the caller has permission to mount. */
+	if (!ns_capable(ns->user_ns, CAP_SYS_ADMIN)) {
+		put_cgroup_ns(ns);
+		return ERR_PTR(-EPERM);
+	}
 
 	/*
 	 * The first time anyone tries to mount a cgroup, enable the list
@@ -2127,6 +2136,11 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		goto out_unlock;
 	}
 
+	if (!opts.none && !capable(CAP_SYS_ADMIN)) {
+		ret = -EPERM;
+		goto out_unlock;
+	}
+
 	root = kzalloc(sizeof(*root), GFP_KERNEL);
 	if (!root) {
 		ret = -ENOMEM;
@@ -2145,12 +2159,34 @@ out_free:
 	kfree(opts.release_agent);
 	kfree(opts.name);
 
-	if (ret)
+	if (ret) {
+		put_cgroup_ns(ns);
 		return ERR_PTR(ret);
+	}
+
 out_mount:
 	dentry = kernfs_mount(fs_type, flags, root->kf_root,
 			      is_v2 ? CGROUP2_SUPER_MAGIC : CGROUP_SUPER_MAGIC,
 			      &new_sb);
+
+	if (!IS_ERR(dentry)) {
+		/*
+		 * In non-init cgroup namespace, instead of root cgroup's
+		 * dentry, we return the dentry corresponding to the
+		 * cgroupns->root_cgrp.
+		 */
+		if (ns != &init_cgroup_ns) {
+			struct dentry *nsdentry;
+			struct cgroup *cgrp;
+
+			cgrp = cset_cgroup_from_root(ns->root_cset, root);
+			nsdentry = kernfs_obtain_root(dentry->d_sb,
+				cgrp->kn);
+			dput(dentry);
+			dentry = nsdentry;
+		}
+	}
+
 	if (IS_ERR(dentry) || !new_sb)
 		cgroup_put(&root->cgrp);
 
@@ -2163,6 +2199,7 @@ out_mount:
 		deactivate_super(pinned_sb);
 	}
 
+	put_cgroup_ns(ns);
 	return dentry;
 }
 
