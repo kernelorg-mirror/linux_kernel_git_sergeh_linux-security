@@ -62,6 +62,54 @@ struct kernfs_root *kernfs_root_from_sb(struct super_block *sb)
 	return NULL;
 }
 
+/**
+ * kernfs_obtain_root - get a dentry for the given kernfs_node
+ * @sb: the kernfs super_block
+ * @kn: kernfs_node for which a dentry is needed
+ *
+ * This can used used by callers which want to mount only a part of the kernfs
+ * as root of the filesystem.
+ */
+struct dentry *kernfs_obtain_root(struct super_block *sb,
+				  struct kernfs_node *kn)
+{
+	struct dentry *dentry;
+	struct inode *inode;
+
+	BUG_ON(sb->s_op != &kernfs_sops);
+
+	/* inode for the given kernfs_node should already exist. */
+	inode = ilookup(sb, kn->ino);
+	if (!inode) {
+		pr_debug("kernfs: could not get inode for '");
+		pr_cont_kernfs_path(kn);
+		pr_cont("'.\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	/* instantiate and link root dentry */
+	dentry = d_obtain_root(inode);
+	if (!dentry) {
+		pr_debug("kernfs: could not get dentry for '");
+		pr_cont_kernfs_path(kn);
+		pr_cont("'.\n");
+		return ERR_PTR(-ENOMEM);
+	}
+
+	/* If this is a new dentry, set it up. We need kernfs_mutex because this
+	 * may be called by callers other than kernfs_fill_super. */
+	mutex_lock(&kernfs_mutex);
+	if (!dentry->d_fsdata) {
+		kernfs_get(kn);
+		dentry->d_fsdata = kn;
+	} else {
+		WARN_ON(dentry->d_fsdata != kn);
+	}
+	mutex_unlock(&kernfs_mutex);
+
+	return dentry;
+}
+
 static int kernfs_fill_super(struct super_block *sb, unsigned long magic)
 {
 	struct kernfs_super_info *info = kernfs_info(sb);
