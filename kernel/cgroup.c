@@ -2191,6 +2191,7 @@ static struct file_system_type cgroup_fs_type = {
 	.name = "cgroup",
 	.mount = cgroup_mount,
 	.kill_sb = cgroup_kill_sb,
+	.fs_flags = FS_USERNS_MOUNT,
 };
 
 char * __must_check cgroup_path_ns(struct cgroup_namespace *ns,
