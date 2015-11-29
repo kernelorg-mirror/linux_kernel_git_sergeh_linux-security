@@ -13,6 +13,7 @@
 #define _LINUX_CAPABILITY_H
 
 #include <uapi/linux/capability.h>
+#include <linux/uidgid.h>
 
 
 #define _KERNEL_CAPABILITY_VERSION _LINUX_CAPABILITY_VERSION_4
@@ -23,19 +24,6 @@ extern int file_caps_enabled;
 typedef struct kernel_cap_struct {
 	__u32 cap[_KERNEL_CAPABILITY_U32S];
 } kernel_cap_t;
-
-struct kernel_ns_cap {
-	__u32 flags;
-	kuid_t uid;
-	struct kernel_cap_struct cap;
-};
-
-struct kernel_ns_cap_header {
-	__u8 version;
-	__u8 ncaps;
-	struct kernel_ns_cap caps[0];
-	/* ... ncaps * kernel_ns_cap  */
-};
 
 /* exact same as vfs_cap_data but in cpu endian and always filled completely */
 struct cpu_vfs_cap_data {
@@ -53,7 +41,7 @@ struct cpu_vfs_ns_cap_data {
 
 struct cpu_vfs_ns_cap_header {
 	__u32 hdr_info;
-	struct kernel_ns_cap caps[0];
+	struct cpu_vfs_ns_cap_data caps[0];
 };
 #define NS_CAPS_VERSION(x) (x & 0xFF)
 #define NS_CAPS_NCAPS(x) ( (x >> 8) & 0xFF )
