@@ -14,6 +14,7 @@
 #include <linux/magic.h>
 #include <linux/slab.h>
 #include <linux/pagemap.h>
+#include <linux/namei.h>
 
 #include "kernfs-internal.h"
 
@@ -62,6 +63,27 @@ struct kernfs_root *kernfs_root_from_sb(struct super_block *sb)
 	return NULL;
 }
 
+/*
+ * find the next ancestor in the path down to @child, where @parent was the
+ * parent whose child we want to find.
+ *
+ * Say the path is /a/b/c/d.  @child is d, @parent is NULL.  We return the root
+ * node.  If @parent is b, then we return the node for c.
+ * Passing in d as @parent is not ok.
+ */
+static struct kernfs_node *
+find_kn_ancestor_below(struct kernfs_node *child, struct kernfs_node *parent)
+{
+	BUG_ON(child == parent);
+
+	while (child->parent != parent) {
+		BUG_ON(!child->parent);
+		child = child->parent;
+	}
+
+	return child;
+}
+
 /**
  * kernfs_obtain_root - get a dentry for the given kernfs_node
  * @sb: the kernfs super_block
@@ -74,42 +96,34 @@ struct dentry *kernfs_obtain_root(struct super_block *sb,
 				  struct kernfs_node *kn)
 {
 	struct dentry *dentry;
-	struct inode *inode;
+	struct kernfs_node *knparent = NULL;
 
 	BUG_ON(sb->s_op != &kernfs_sops);
 
-	/* inode for the given kernfs_node should already exist. */
-	inode = kernfs_get_inode(sb, kn);
-	if (!inode) {
-		pr_debug("kernfs: could not get inode for '");
-		pr_cont_kernfs_path(kn);
-		pr_cont("'.\n");
-		return ERR_PTR(-EINVAL);
-	}
+	dentry = dget(sb->s_root);
+	if (!kn->parent) // this is the root
+		return dentry;
 
-	/* instantiate and link root dentry */
-	dentry = d_obtain_root(inode);
-	if (!dentry) {
-		pr_debug("kernfs: could not get dentry for '");
-		pr_cont_kernfs_path(kn);
-		pr_cont("'.\n");
-		return ERR_PTR(-ENOMEM);
-	}
+	knparent = find_kn_ancestor_below(kn, NULL);
+	BUG_ON(!knparent);
 
-	/*
-	 * If this is a new dentry, set it up. We need kernfs_mutex because
-	 * this may be called by callers other than kernfs_fill_super.
-	 */
-	mutex_lock(&kernfs_mutex);
-	if (!dentry->d_fsdata) {
-		kernfs_get(kn);
-		dentry->d_fsdata = kn;
-	} else {
-		WARN_ON(dentry->d_fsdata != kn);
-	}
-	mutex_unlock(&kernfs_mutex);
+	do {
+		struct dentry *dtmp;
+		struct kernfs_node *kntmp;
 
-	return dentry;
+		if (kn == knparent)
+			return dentry;
+		kntmp = find_kn_ancestor_below(kn, knparent);
+		BUG_ON(!kntmp);
+		dtmp = lookup_one_len(kntmp->name, dentry, strlen(kntmp->name));
+		dput(dentry);
+		if (IS_ERR(dtmp))
+			return dtmp;
+		knparent = kntmp;
+		dentry = dtmp;
+	} while (1);
+
+	// notreached
 }
 
 static int kernfs_fill_super(struct super_block *sb, unsigned long magic)
