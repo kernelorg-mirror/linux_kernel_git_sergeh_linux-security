@@ -1014,18 +1014,18 @@ writeback as follows.
 	vm.dirty[_background]_ratio.
 
 
-6. CGroup Namespaces
+6. Cgroup Namespaces
 
-CGroup Namespace provides a mechanism to virtualize the view of the
-/proc/<pid>/cgroup file. The CLONE_NEWCGROUP clone-flag can be used with
+Cgroup namespaces provides a mechanism to virtualize the view of the
+"/proc/$PID/cgroup" file. The CLONE_NEWCGROUP clone-flag can be used with
 clone() and unshare() syscalls to create a new cgroup namespace.
-The process running inside the cgroup namespace will have its /proc/<pid>/cgroup
+The process running inside the cgroup namespace will have its /proc/$PID/cgroup
 output restricted to cgroupns-root. cgroupns-root is the cgroup of the process
 at the time of creation of the cgroup namespace.
 
-Prior to CGroup Namespace, the /proc/<pid>/cgroup file used to show complete
-path of the cgroup of a process. In a container setup (where a set of cgroups
-and namespaces are intended to isolate processes), the /proc/<pid>/cgroup file
+Prior to cgroup namespaces, the /proc/$PID/cgroup file showed the complete
+path of the cgroup of a process. In a container setup where a set of cgroups
+and namespaces are intended to isolate processes the /proc/$PID/cgroup file
 may leak potential system level information to the isolated processes.
 
 For Example:
@@ -1035,34 +1035,32 @@ For Example:
 The path '/batchjobs/container_id1' can generally be considered as system-data
 and its desirable to not expose it to the isolated process.
 
-CGroup Namespaces can be used to restrict visibility of this path.
-For Example:
-  # Before creating cgroup namespace
-  $ ls -l /proc/self/ns/cgroup
+Cgroup namespaces can be used to restrict visibility of this path.
+For example, before creating a cgroup namespace, one would see:
+
+  # ls -l /proc/self/ns/cgroup
   lrwxrwxrwx 1 root root 0 2014-07-15 10:37 /proc/self/ns/cgroup -> cgroup:[4026531835]
-  $ cat /proc/self/cgroup
+  # cat /proc/self/cgroup
   0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/batchjobs/container_id1
 
-  # unshare(CLONE_NEWCGROUP) and exec /bin/bash
-  $ ~/unshare -c
-  [ns]$ ls -l /proc/self/ns/cgroup
+After unsharing a new namespace, the view has changed.
+
+  # ls -l /proc/self/ns/cgroup
   lrwxrwxrwx 1 root root 0 2014-07-15 10:35 /proc/self/ns/cgroup -> cgroup:[4026532183]
-  # From within new cgroupns, process sees that its in the root cgroup
-  [ns]$ cat /proc/self/cgroup
+  # cat /proc/self/cgroup
   0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/
 
-  # From global cgroupns:
-  $ cat /proc/<pid>/cgroup
+While a task in the global cgroup namespace sees the full path.
+
+  # cat /proc/<pid>/cgroup
   0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/batchjobs/container_id1
 
-  # Unshare cgroupns along with userns and mountns
-  # Following calls unshare(CLONE_NEWCGROUP|CLONE_NEWUSER|CLONE_NEWNS), then
-  # sets up uid/gid map and execs /bin/bash
-  $ ~/unshare -c -u -m
-  # Originally, we were in /batchjobs/container_id1 cgroup. Mount our own cgroup
-  # hierarchy.
-  [ns]$ mount -t cgroup cgroup /tmp/cgroup
-  [ns]$ ls -l /tmp/cgroup
+If also unsharing the user and mounts namespaces, then when mounting cgroupfs
+then the mount's root will be the task's cgroup.
+
+  # lxc-usernsexec --unshare -m -c
+  # mount -t cgroup cgroup /tmp/cgroup
+  # ls -l /tmp/cgroup
   total 0
   -r--r--r-- 1 root root 0 2014-10-13 09:32 cgroup.controllers
   -r--r--r-- 1 root root 0 2014-10-13 09:32 cgroup.populated
@@ -1088,21 +1086,23 @@ behavior:
 
 (2) The cgroupns-root cgroup does not change even if the namespace
     creator process later moves to a different cgroup.
-    $ ~/unshare -c # unshare cgroupns in some cgroup
-    [ns]$ cat /proc/self/cgroup
-    0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/
-    [ns]$ mkdir sub_cgrp_1
-    [ns]$ echo 0 > sub_cgrp_1/cgroup.procs
-    [ns]$ cat /proc/self/cgroup
-    0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/sub_cgrp_1
+    # ~/unshare -c # unshare cgroupns in some cgroup
+     # cat /proc/self/cgroup
+     0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/
+     # mkdir sub_cgrp_1
+     # echo 0 > sub_cgrp_1/cgroup.procs
+     # cat /proc/self/cgroup
+     0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/sub_cgrp_1
 
 (3) Each process gets its CGROUPNS specific view of /proc/<pid>/cgroup
+
 (a) Processes running inside the cgroup namespace will be able to see
-    cgroup paths (in /proc/self/cgroup) only inside their root cgroup
-    [ns]$ sleep 100000 &  # From within unshared cgroupns
+    cgroup paths (in /proc/self/cgroup) only inside their root cgroup.
+    From within an unshared cgroupns:
+    # sleep 100000 &
     [1] 7353
-    [ns]$ echo 7353 > sub_cgrp_1/cgroup.procs
-    [ns]$ cat /proc/7353/cgroup
+    # echo 7353 > sub_cgrp_1/cgroup.procs
+    # cat /proc/7353/cgroup
     0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/sub_cgrp_1
 
 (b) From global cgroupns, the real cgroup path will be visible:
@@ -1119,13 +1119,13 @@ behavior:
     relative to the cgroupns-root of the caller.
 
 (4) Processes inside a cgroupns can move in-and-out of the cgroupns-root
-    (if they have proper access to external cgroups).
-    # From inside cgroupns (with cgroupns-root at /batchjobs/container_id1), and
-    # assuming that the global hierarchy is still accessible inside cgroupns:
-    $ cat /proc/7353/cgroup
+    (if they have proper access to external cgroups). So from inside a
+    cgroupns (with cgroupns-root at /batchjobs/container_id1), and
+    assuming that the global hierarchy is still accessible inside cgroupns:
+    # cat /proc/7353/cgroup
     0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/sub_cgrp_1
-    $ echo 7353 > batchjobs/container_id2/cgroup.procs
-    $ cat /proc/7353/cgroup
+    # echo 7353 > batchjobs/container_id2/cgroup.procs
+    # cat /proc/7353/cgroup
     0:cpuset,cpu,cpuacct,memory,devices,freezer,hugetlb:/../container_id2
 
     Note that this kind of setup is not encouraged. A task inside cgroupns
@@ -1152,7 +1152,8 @@ behavior:
 
 (8) Namespace specific cgroup hierarchy can be mounted by a process running
     inside cgroupns:
-    $ mount -t cgroup -o __DEVEL__sane_behavior cgroup $MOUNT_POINT
+
+    # mount -t cgroup -o __DEVEL__sane_behavior cgroup $MOUNT_POINT
 
     This will mount the unified cgroup hierarchy with cgroupns-root as the
     filesystem root. The process needs CAP_SYS_ADMIN in its userns and mntns.
