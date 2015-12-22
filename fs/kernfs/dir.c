@@ -109,55 +109,49 @@ static struct kernfs_node *kernfs_common_ancestor(struct kernfs_node *a,
  * kn_from: /n1/n2/n3/n4/n5   [depth=5]
  * kn_to:   /n1/n2/n3         [depth=3]
  * result:  /../..
+ *
+ * return value: length of the string.  If greater than buflen,
+ * then contents of buf are undefined.  On error, -1 is returned.
  */
-static char *
+static int
 kernfs_path_from_node_locked(struct kernfs_node *kn_to,
 			     struct kernfs_node *kn_from, char *buf,
 			     size_t buflen)
 {
-	char *p = buf;
 	struct kernfs_node *kn, *common;
 	const char parent_str[] = "/..";
-	int i;
 	size_t depth_from, depth_to, len = 0, nlen = 0;
-	size_t plen = sizeof(parent_str) - 1;
-
-	/* We atleast need 2 bytes to write "/\0". */
-	if (buflen < 2)
-		return NULL;
+	char *p;
+	int i;
 
 	if (!kn_from)
 		kn_from = kernfs_root(kn_to)->kn;
 
-	if (kn_from == kn_to) {
-		*p = '/';
-		*(++p) = '\0';
-		return buf;
-	}
+	if (kn_from == kn_to)
+		return strlcpy(buf, "/", buflen);
 
 	common = kernfs_common_ancestor(kn_from, kn_to);
 	if (WARN_ON(!common))
-		return NULL;
+		return -1;
 
 	depth_to = kernfs_depth(common, kn_to);
 	depth_from = kernfs_depth(common, kn_from);
 
-	for (i = 0; i < depth_from; i++) {
-		if (len + plen + 1 > buflen)
-			return NULL;
-		strcpy(p, parent_str);
-		p += plen;
-		len += plen;
-	}
+	if (buf)
+		buf[0] = '\0';
+
+	for (i = 0; i < depth_from; i++)
+		len += strlcpy(buf + len, parent_str,
+			       len < buflen ? buflen - len : 0);
 
 	/* Calculate how many bytes we need for the rest */
 	for (kn = kn_to; kn != common; kn = kn->parent)
 		nlen += strlen(kn->name) + 1;
 
-	if (len + nlen + 1 > buflen)
-		return NULL;
+	if (len + nlen >= buflen)
+		return len + nlen;
 
-	p += nlen;
+	p = buf + len + nlen;
 	*p = '\0';
 	for (kn = kn_to; kn != common; kn = kn->parent) {
 		nlen = strlen(kn->name);
@@ -166,7 +160,7 @@ kernfs_path_from_node_locked(struct kernfs_node *kn_to,
 		*(--p) = '/';
 	}
 
-	return buf;
+	return len + nlen;
 }
 
 /**
@@ -230,16 +224,18 @@ size_t kernfs_path_len(struct kernfs_node *kn)
  * match @buf.  If @buf isn't long enough, @buf is nul terminated
  * and %NULL is returned.
  */
-char *kernfs_path_from_node(struct kernfs_node *to, struct kernfs_node *from,
+char * kernfs_path_from_node(struct kernfs_node *to, struct kernfs_node *from,
 			    char *buf, size_t buflen)
 {
 	unsigned long flags;
-	char *p;
+	int ret;
 
 	spin_lock_irqsave(&kernfs_rename_lock, flags);
-	p = kernfs_path_from_node_locked(to, from, buf, buflen);
+	ret = kernfs_path_from_node_locked(to, from, buf, buflen);
 	spin_unlock_irqrestore(&kernfs_rename_lock, flags);
-	return p;
+	if (ret < 0 || ret >= buflen)
+		return NULL;
+	return buf;
 }
 EXPORT_SYMBOL_GPL(kernfs_path_from_node);
 
@@ -287,18 +283,39 @@ void pr_cont_kernfs_name(struct kernfs_node *kn)
 void pr_cont_kernfs_path(struct kernfs_node *kn)
 {
 	unsigned long flags;
-	char *p;
+	char *p = NULL;
+	int sz1, sz2;
 
 	spin_lock_irqsave(&kernfs_rename_lock, flags);
 
-	p = kernfs_path_from_node_locked(kn, NULL, kernfs_pr_cont_buf,
-					 sizeof(kernfs_pr_cont_buf));
-	if (p)
-		pr_cont("%s", p);
-	else
-		pr_cont("<name too long>");
+	sz1 = kernfs_path_from_node_locked(kn, NULL, kernfs_pr_cont_buf,
+					   sizeof(kernfs_pr_cont_buf));
+	if (sz1 < 0) {
+		pr_cont("(error)");
+		goto out;
+	}
 
+	if (sz1 < sizeof(kernfs_pr_cont_buf)) {
+		pr_cont("%s", kernfs_pr_cont_buf);
+		goto out;
+	}
+
+	p = kmalloc(sz1 + 1, GFP_NOFS);
+	if (!p) {
+		pr_cont("(out of memory)");
+		goto out;
+	}
+	sz2 = kernfs_path_from_node_locked(kn, NULL, p, sz1 + 1);
+	if (sz2 > sz1 || sz2 < 0) {
+		pr_cont("(error)");
+		goto out;
+	}
+
+	pr_cont("%s", p);
+
+out:
 	spin_unlock_irqrestore(&kernfs_rename_lock, flags);
+	kfree(p);
 }
 
 /**
