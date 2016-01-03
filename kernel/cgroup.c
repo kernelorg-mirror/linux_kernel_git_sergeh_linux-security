@@ -2218,28 +2218,24 @@ static struct file_system_type cgroup2_fs_type = {
 	.fs_flags = FS_USERNS_MOUNT,
 };
 
-static int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
-			  struct cgroup_namespace *ns)
-{
-	struct cgroup *root;
-
-	root = cset_cgroup_from_root(ns->root_cset, cgrp->root);
-	return kernfs_path_from_node(cgrp->kn, root->kn, buf, buflen);
-}
-
-char *cgroup_path(struct cgroup *cgrp, char *buf, size_t buflen)
+char *cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
+		     struct cgroup_namespace *ns)
 {
 	int ret;
-	struct cgroup_namespace *ns = &init_cgroup_ns;
-
-	if (!in_interrupt())
-		ns = current->nsproxy->cgroup_ns;
+	struct cgroup *root = cset_cgroup_from_root(ns->root_cset, cgrp->root);
 	
-	ret = cgroup_path_ns(cgrp, buf, buflen, ns);
+	ret = kernfs_path_from_node(cgrp->kn, root->kn, buf, buflen);
 	if (ret < 0 || ret >= buflen)
 		return NULL;
 	return buf;
 }
+EXPORT_SYMBOL_GPL(cgroup_path_ns);
+
+char *cgroup_path(struct cgroup *cgrp, char *buf, size_t buflen)
+{
+	return cgroup_path_ns(cgrp, buf, buflen, &init_cgroup_ns);
+}
+
 EXPORT_SYMBOL_GPL(cgroup_path);
 
 /**
@@ -5487,7 +5483,8 @@ int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
 		 * " (deleted)" is appended to the cgroup path.
 		 */
 		if (cgroup_on_dfl(cgrp) || !(tsk->flags & PF_EXITING)) {
-			path = cgroup_path(cgrp, buf, PATH_MAX);
+			path = cgroup_path_ns(cgrp, buf, PATH_MAX,
+					      current->nsproxy->cgroup_ns);
 			if (!path) {
 				retval = -ENAMETOOLONG;
 				goto out_unlock;

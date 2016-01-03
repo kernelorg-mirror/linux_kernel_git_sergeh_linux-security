@@ -586,6 +586,8 @@ struct cgroup_namespace *
 copy_cgroup_ns(unsigned long flags, struct user_namespace *user_ns,
 	       struct cgroup_namespace *old_ns);
 
+char *cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
+		     struct cgroup_namespace *ns);
 char *cgroup_path(struct cgroup *cgrp, char *buf, size_t buflen);
 
 #else /* !CONFIG_CGROUPS */
