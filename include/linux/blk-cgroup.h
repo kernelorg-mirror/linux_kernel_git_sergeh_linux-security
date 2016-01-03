@@ -345,7 +345,7 @@ static inline int blkg_path(struct blkcg_gq *blkg, char *buf, int buflen)
 {
 	char *p;
 
-	p = cgroup_path(blkg->blkcg->css.cgroup, buf, buflen);
+	p = cgroup_abs_path(blkg->blkcg->css.cgroup, buf, buflen);
 	if (!p) {
 		strncpy(buf, "<unavailable>", buflen);
 		return -ENAMETOOLONG;

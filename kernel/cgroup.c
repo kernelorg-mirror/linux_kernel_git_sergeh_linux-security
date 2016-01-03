@@ -2227,6 +2227,18 @@ static int cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
 	return kernfs_path_from_node(cgrp->kn, root->kn, buf, buflen);
 }
 
+char *cgroup_abs_path(struct cgroup *cgrp, char *buf, size_t buflen)
+{
+	int ret;
+	struct cgroup_namespace *ns = &init_cgroup_ns;
+
+	ret = cgroup_path_ns(cgrp, buf, buflen, ns);
+	if (ret < 0 || ret >= buflen)
+		return NULL;
+	return buf;
+}
+EXPORT_SYMBOL_GPL(cgroup_abs_path);
+
 char *cgroup_path(struct cgroup *cgrp, char *buf, size_t buflen)
 {
 	int ret;
