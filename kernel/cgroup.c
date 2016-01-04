@@ -2218,8 +2218,9 @@ static struct file_system_type cgroup2_fs_type = {
 	.fs_flags = FS_USERNS_MOUNT,
 };
 
-char *cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
-		     struct cgroup_namespace *ns)
+char *
+cgroup_path_ns_locked(struct cgroup *cgrp, char *buf, size_t buflen,
+		      struct cgroup_namespace *ns)
 {
 	int ret;
 	struct cgroup *root = cset_cgroup_from_root(ns->root_cset, cgrp->root);
@@ -2228,6 +2229,22 @@ char *cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
 	if (ret < 0 || ret >= buflen)
 		return NULL;
 	return buf;
+}
+
+char *cgroup_path_ns(struct cgroup *cgrp, char *buf, size_t buflen,
+		     struct cgroup_namespace *ns)
+{
+	char *ret;
+
+	mutex_lock(&cgroup_mutex);
+	spin_lock_bh(&css_set_lock);
+
+	ret = cgroup_path_ns_locked(cgrp, buf, buflen, ns);
+
+	spin_unlock_bh(&css_set_lock);
+	mutex_unlock(&cgroup_mutex);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(cgroup_path_ns);
 
@@ -2265,7 +2282,8 @@ char *task_cgroup_path(struct task_struct *task, char *buf, size_t buflen)
 
 	if (root) {
 		cgrp = task_cgroup_from_root(task, root);
-		path = cgroup_path(cgrp, buf, buflen);
+		path = cgroup_path_ns_locked(cgrp, buf, buflen,
+					     &init_cgroup_ns);
 	} else {
 		/* if no hierarchy exists, everyone is in "/" */
 		if (strlcpy(buf, "/", buflen) < buflen)
@@ -5483,8 +5501,8 @@ int proc_cgroup_show(struct seq_file *m, struct pid_namespace *ns,
 		 * " (deleted)" is appended to the cgroup path.
 		 */
 		if (cgroup_on_dfl(cgrp) || !(tsk->flags & PF_EXITING)) {
-			path = cgroup_path_ns(cgrp, buf, PATH_MAX,
-					      current->nsproxy->cgroup_ns);
+			path = cgroup_path_ns_locked(cgrp, buf, PATH_MAX,
+						     current->nsproxy->cgroup_ns);
 			if (!path) {
 				retval = -ENAMETOOLONG;
 				goto out_unlock;
@@ -5767,7 +5785,8 @@ static void cgroup_release_agent(struct work_struct *work)
 		goto out;
 
 	spin_lock_bh(&css_set_lock);
-	path = cgroup_path(cgrp, pathbuf, PATH_MAX);
+	path = cgroup_path_ns_locked(cgrp, pathbuf, PATH_MAX,
+				     &init_cgroup_ns);
 	spin_unlock_bh(&css_set_lock);
 	if (!path)
 		goto out;

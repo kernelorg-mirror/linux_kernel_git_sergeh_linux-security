@@ -345,7 +345,11 @@ static inline int blkg_path(struct blkcg_gq *blkg, char *buf, int buflen)
 {
 	char *p;
 
+	mutex_lock(&cgroup_mutex);
+	spin_lock_bh(&css_set_lock);
 	p = cgroup_path(blkg->blkcg->css.cgroup, buf, buflen);
+	spin_unlock_bh(&css_set_lock);
+	mutex_unlock(&cgroup_mutex);
 	if (!p) {
 		strncpy(buf, "<unavailable>", buflen);
 		return -ENAMETOOLONG;
