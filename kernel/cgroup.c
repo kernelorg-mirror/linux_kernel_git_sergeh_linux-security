@@ -2250,7 +2250,7 @@ EXPORT_SYMBOL_GPL(cgroup_path_ns);
 
 char *cgroup_path(struct cgroup *cgrp, char *buf, size_t buflen)
 {
-	return cgroup_path_ns(cgrp, buf, buflen, &init_cgroup_ns);
+	return kernfs_path(cgrp->kn, buf, buflen);
 }
 
 EXPORT_SYMBOL_GPL(cgroup_path);
