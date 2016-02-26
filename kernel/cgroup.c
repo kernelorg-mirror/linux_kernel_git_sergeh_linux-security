@@ -1571,6 +1571,7 @@ static int cgroup_show_options(struct seq_file *seq,
 {
 	struct cgroup_root *root = cgroup_root_from_kf(kf_root);
 	struct cgroup_subsys *ss;
+	char buf[PATH_MAX];
 	int ssid;
 
 	if (root != &cgrp_dfl_root)
@@ -1592,6 +1593,8 @@ static int cgroup_show_options(struct seq_file *seq,
 		seq_puts(seq, ",clone_children");
 	if (strlen(root->name))
 		seq_show_option(seq, "name", root->name);
+	if (kernfs_path(kf_root->kn, buf, PATH_MAX))
+		seq_show_option(seq, "nsroot", buf);
 	return 0;
 }
 
