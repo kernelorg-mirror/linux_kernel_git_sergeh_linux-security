@@ -308,6 +308,17 @@ out:
 	spin_unlock_irqrestore(&kernfs_rename_lock, flags);
 }
 
+char *kernfs_abs_path(struct kernfs_node *kn, char *buf, size_t buflen)
+{
+	struct kernfs_root *rkn = kernfs_root(kn);
+	int ret;
+
+	ret = kernfs_path_from_node(kn, rkn->kn, buf, buflen);
+	if (ret < 0 || ret >= buflen)
+		return NULL;
+	return buf;
+}
+
 /**
  * kernfs_get_parent - determine the parent node and pin it
  * @kn: kernfs_node of interest

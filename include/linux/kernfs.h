@@ -269,6 +269,7 @@ int kernfs_name(struct kernfs_node *kn, char *buf, size_t buflen);
 size_t kernfs_path_len(struct kernfs_node *kn);
 int kernfs_path_from_node(struct kernfs_node *root_kn, struct kernfs_node *kn,
 			  char *buf, size_t buflen);
+char *kernfs_abs_path(struct kernfs_node *kn, char *buf, size_t buflen);
 char *kernfs_path(struct kernfs_node *kn, char *buf, size_t buflen);
 void pr_cont_kernfs_name(struct kernfs_node *kn);
 void pr_cont_kernfs_path(struct kernfs_node *kn);

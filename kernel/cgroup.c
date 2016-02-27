@@ -1593,7 +1593,8 @@ static int cgroup_show_options(struct seq_file *seq,
 		seq_puts(seq, ",clone_children");
 	if (strlen(root->name))
 		seq_show_option(seq, "name", root->name);
-	if (kernfs_path(kf_root->kn, buf, PATH_MAX))
+	if (kernfs_abs_path(kf_root->kn, buf, PATH_MAX) &&
+			strcmp(buf, "/") != 0)
 		seq_show_option(seq, "nsroot", buf);
 	return 0;
 }
