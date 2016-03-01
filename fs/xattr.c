@@ -171,11 +171,33 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 {
 	struct inode *inode = dentry->d_inode;
 	int error = -EAGAIN;
+	void *wvalue = NULL;
+	size_t wsize = 0;
 	int issec = !strncmp(name, XATTR_SECURITY_PREFIX,
 				   XATTR_SECURITY_PREFIX_LEN);
 
-	if (issec)
+	if (issec) {
 		inode->i_flags &= ~S_NOSEC;
+
+		if (!strcmp(name, "security.capability")) {
+			/* Normal semantics for caller in init_user_ns */
+			if (current_user_ns() == &init_user_ns) {
+				if (!capable(CAP_SETFCAP))
+					return -EPERM;
+			} else {
+				/* Root in a non-init user_ns asks to set
+				 * security.capability, so we write the virtualized
+				 * xattr in its place */
+				cap_setxattr_make_nscap(dentry, value, size,
+						&wvalue, &wsize);
+				if (!wvalue)
+					return -EPERM;
+				value = wvalue;
+				size = wsize;
+			}
+		}
+	}
+
 	if (inode->i_opflags & IOP_XATTR) {
 		error = __vfs_setxattr(dentry, inode, name, value, size, flags);
 		if (!error) {
@@ -184,8 +206,10 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 						     size, flags);
 		}
 	} else {
-		if (unlikely(is_bad_inode(inode)))
-			return -EIO;
+		if (unlikely(is_bad_inode(inode))) {
+			error = -EIO;
+			goto out;
+		}
 	}
 	if (error == -EAGAIN) {
 		error = -EOPNOTSUPP;
@@ -200,9 +224,10 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 		}
 	}
 
+out:
+	kfree(wvalue);
 	return error;
 }
-
 
 int
 vfs_setxattr(struct dentry *dentry, const char *name, const void *value,
