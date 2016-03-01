@@ -62,6 +62,14 @@ typedef struct __user_cap_data_struct {
 #define VFS_CAP_U32_2           2
 #define XATTR_CAPS_SZ_2         (sizeof(__le32)*(1 + 2*VFS_CAP_U32_2))
 
+/*
+ * v2 had been deprecated in favor of v3, now we are introducing v4, so
+ * don't use v3, use v4, for the nscaps
+ */
+#define VFS_CAP_REVISION_4	0x04000000
+#define VFS_CAP_U32_4           2
+#define XATTR_CAPS_SZ_4         (sizeof(__le32)*(2 + 2*VFS_CAP_U32_2))
+
 #define XATTR_CAPS_SZ           XATTR_CAPS_SZ_2
 #define VFS_CAP_U32             VFS_CAP_U32_2
 #define VFS_CAP_REVISION	VFS_CAP_REVISION_2
@@ -72,6 +80,18 @@ struct vfs_cap_data {
 		__le32 permitted;    /* Little endian */
 		__le32 inheritable;  /* Little endian */
 	} data[VFS_CAP_U32];
+};
+
+/*
+ * same as vfs_cap_data but with a rootid at the end
+ */
+struct vfs_ns_cap_data {
+       __le32 magic_etc;
+       struct {
+               __le32 permitted;    /* Little endian */
+               __le32 inheritable;  /* Little endian */
+       } data[VFS_CAP_U32];
+       __le32 rootid;
 };
 
 #ifndef __KERNEL__
