@@ -313,6 +313,10 @@ int cap_inode_need_killpriv(struct dentry *dentry)
 	if (!inode->i_op->getxattr)
 	       return 0;
 
+	error = inode->i_op->getxattr(dentry, XATTR_NAME_NS_CAPS, NULL, 0);
+	if (error > 0)
+		return 1;
+
 	error = inode->i_op->getxattr(dentry, XATTR_NAME_CAPS, NULL, 0);
 	if (error <= 0)
 		return 0;
@@ -330,11 +334,17 @@ int cap_inode_need_killpriv(struct dentry *dentry)
 int cap_inode_killpriv(struct dentry *dentry)
 {
 	struct inode *inode = d_backing_inode(dentry);
+	int ret1, ret2;
 
 	if (!inode->i_op->removexattr)
 	       return 0;
 
-	return inode->i_op->removexattr(dentry, XATTR_NAME_CAPS);
+	ret1 = inode->i_op->removexattr(dentry, XATTR_NAME_CAPS);
+	ret2 = inode->i_op->removexattr(dentry, XATTR_NAME_NS_CAPS);
+
+	if (ret1 != 0)
+		return ret1;
+	return ret2;
 }
 
 /*
@@ -438,6 +448,65 @@ int get_vfs_caps_from_disk(const struct dentry *dentry, struct cpu_vfs_cap_data 
 	return 0;
 }
 
+int get_vfs_ns_caps_from_disk(const struct dentry *dentry, struct cpu_vfs_cap_data *cpu_caps)
+{
+	struct inode *inode = d_backing_inode(dentry);
+	unsigned i;
+	u32 magic_etc;
+	ssize_t size;
+	struct vfs_ns_cap_data nscap;
+	bool foundroot = false;
+	struct user_namespace *ns;
+
+	memset(cpu_caps, 0, sizeof(struct cpu_vfs_cap_data));
+
+	if (!inode || !inode->i_op->getxattr)
+		return -ENODATA;
+
+	/* verify that current or ancestor userns root owns this file */
+	for (ns = current_user_ns(); ; ns = ns->parent) {
+		if (from_kuid(ns, dentry->d_inode->i_uid) == 0) {
+			foundroot = true;
+			break;
+		}
+		if (ns == &init_user_ns)
+			break;
+	}
+	if (!foundroot)
+		return -ENODATA;
+
+	size = inode->i_op->getxattr((struct dentry *)dentry, XATTR_NAME_NS_CAPS,
+			&nscap, sizeof(nscap));
+	if (size == -ENODATA || size == -EOPNOTSUPP)
+		/* no data, that's ok */
+		return -ENODATA;
+	if (size < 0)
+		return size;
+	if (size != sizeof(nscap))
+		return -EINVAL;
+
+	magic_etc = le32_to_cpu(nscap.magic_etc);
+
+	if (NS_CAPS_VERSION(magic_etc) != VFS_NS_CAP_REVISION)
+		return -EINVAL;
+
+	cpu_caps->magic_etc = VFS_CAP_REVISION_2;
+	if (NS_CAPS_FLAGS(magic_etc) & VFS_NS_CAP_EFFECTIVE)
+		cpu_caps->magic_etc |= VFS_CAP_FLAGS_EFFECTIVE;
+	/* copy the entry */
+	CAP_FOR_EACH_U32(i) {
+		if (i >= VFS_CAP_U32_2)
+			break;
+		cpu_caps->permitted.cap[i] = le32_to_cpu(nscap.data[i].permitted);
+		cpu_caps->inheritable.cap[i] = le32_to_cpu(nscap.data[i].inheritable);
+	}
+
+	cpu_caps->permitted.cap[CAP_LAST_U32] &= CAP_LAST_U32_VALID_MASK;
+	cpu_caps->inheritable.cap[CAP_LAST_U32] &= CAP_LAST_U32_VALID_MASK;
+
+	return 0;
+}
+
 /*
  * Attempt to get the on-exec apply capability sets for an executable file from
  * its xattrs and, if present, apply them to the proposed credentials being
@@ -456,11 +525,13 @@ static int get_file_caps(struct linux_binprm *bprm, bool *effective, bool *has_c
 	if (bprm->file->f_path.mnt->mnt_flags & MNT_NOSUID)
 		return 0;
 
-	rc = get_vfs_caps_from_disk(bprm->file->f_path.dentry, &vcaps);
+	rc = get_vfs_ns_caps_from_disk(bprm->file->f_path.dentry, &vcaps);
+	if (rc == -ENODATA)
+		rc = get_vfs_caps_from_disk(bprm->file->f_path.dentry, &vcaps);
 	if (rc < 0) {
 		if (rc == -EINVAL)
-			printk(KERN_NOTICE "%s: get_vfs_caps_from_disk returned %d for %s\n",
-				__func__, rc, bprm->filename);
+			printk(KERN_NOTICE "Invalid argument reading file caps for %s\n",
+					bprm->filename);
 		else if (rc == -ENODATA)
 			rc = 0;
 		goto out;
@@ -662,6 +733,12 @@ int cap_inode_setxattr(struct dentry *dentry, const char *name,
 		return 0;
 	}
 
+	if (!strcmp(name, XATTR_NAME_NS_CAPS)) {
+		if (!capable_wrt_inode_uidgid(dentry->d_inode, CAP_SETFCAP))
+			return -EPERM;
+		return 0;
+	}
+
 	if (!strncmp(name, XATTR_SECURITY_PREFIX,
 		     sizeof(XATTR_SECURITY_PREFIX) - 1) &&
 	    !capable(CAP_SYS_ADMIN))
@@ -684,6 +761,12 @@ int cap_inode_removexattr(struct dentry *dentry, const char *name)
 {
 	if (!strcmp(name, XATTR_NAME_CAPS)) {
 		if (!capable(CAP_SETFCAP))
+			return -EPERM;
+		return 0;
+	}
+
+	if (!strcmp(name, XATTR_NAME_NS_CAPS)) {
+		if (!capable_wrt_inode_uidgid(dentry->d_inode, CAP_SETFCAP))
 			return -EPERM;
 		return 0;
 	}
