@@ -13,7 +13,7 @@
 #define _LINUX_CAPABILITY_H
 
 #include <uapi/linux/capability.h>
-
+#include <linux/uidgid.h>
 
 #define _KERNEL_CAPABILITY_VERSION _LINUX_CAPABILITY_VERSION_3
 #define _KERNEL_CAPABILITY_U32S    _LINUX_CAPABILITY_U32S_3
@@ -245,5 +245,8 @@ extern bool file_ns_capable(const struct file *file, struct user_namespace *ns, 
 
 /* audit system wants to get cap info from files as well */
 extern int get_vfs_caps_from_disk(const struct dentry *dentry, struct cpu_vfs_cap_data *cpu_caps);
+
+extern void cap_setxattr_make_nscap(struct dentry *dentry, const void *value,
+		size_t size, void **wvalue, size_t *wsize);
 
 #endif /* !_LINUX_CAPABILITY_H */
