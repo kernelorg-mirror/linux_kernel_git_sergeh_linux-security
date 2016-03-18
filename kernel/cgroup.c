@@ -1565,12 +1565,14 @@ static int rebind_subsystems(struct cgroup_root *dst_root,
 	return 0;
 }
 
-static int cgroup_show_options(struct seq_file *seq,
+static int cgroup_show_options(struct seq_file *seq, struct dentry *dentry,
 			       struct kernfs_root *kf_root)
 {
 	struct cgroup_root *root = cgroup_root_from_kf(kf_root);
 	struct cgroup_subsys *ss;
 	int ssid;
+	char nsroot[256];
+	struct kernfs_node *d_kn = dentry->d_fsdata;
 
 	if (root != &cgrp_dfl_root)
 		for_each_subsys(ss, ssid)
@@ -1591,6 +1593,10 @@ static int cgroup_show_options(struct seq_file *seq,
 		seq_puts(seq, ",clone_children");
 	if (strlen(root->name))
 		seq_show_option(seq, "name", root->name);
+	if (kernfs_path(d_kn, nsroot, 256))
+		seq_show_option(seq, "nsroot", nsroot);
+	else
+		seq_show_option(seq, "nsroot", "invalid");
 	return 0;
 }
 
