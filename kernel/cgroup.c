@@ -1593,6 +1593,35 @@ static int rebind_subsystems(struct cgroup_root *dst_root, u16 ss_mask)
 	return 0;
 }
 
+static int cgroup_show_path(struct seq_file *sf, struct kernfs_node *kn,
+			    struct kernfs_root *kr)
+{
+	int len = 0, ret;
+	char *buf = NULL;
+
+	mutex_lock(&cgroup_mutex);
+	spin_lock_bh(&css_set_lock);
+	len = kernfs_path_from_node(kn, kr->kn, NULL, 0);
+	if (len > 0)
+		buf = kmalloc(len + 1, GFP_ATOMIC);
+	if (buf)
+		ret = kernfs_path_from_node(kn, kr->kn, buf, len + 1);
+	spin_unlock_bh(&css_set_lock);
+	mutex_unlock(&cgroup_mutex);
+
+	if (len <= 0)
+		return len;
+	if (!buf)
+		return -ENOMEM;
+	if (ret == len) {
+		seq_escape(sf, buf, " \t\n\\");
+		ret = 0;
+	} else if (ret >= 0)
+		ret = -EINVAL;
+	kfree(buf);
+	return ret;
+}
+
 static int cgroup_show_options(struct seq_file *seq,
 			       struct kernfs_root *kf_root)
 {
@@ -5430,6 +5459,7 @@ static struct kernfs_syscall_ops cgroup_kf_syscall_ops = {
 	.mkdir			= cgroup_mkdir,
 	.rmdir			= cgroup_rmdir,
 	.rename			= cgroup_rename,
+	.show_path		= cgroup_show_path,
 };
 
 static void __init cgroup_init_subsys(struct cgroup_subsys *ss, bool early)
