@@ -1215,6 +1215,41 @@ static void cgroup_destroy_root(struct cgroup_root *root)
 	cgroup_free_root(root);
 }
 
+/*
+ * look up cgroup associated with current task's cgroup namespace on the
+ * specified hierarchy
+ */
+static struct cgroup *
+current_cgns_cgroup_from_root(struct cgroup_root *root)
+{
+	struct cgroup *res = NULL;
+	struct css_set *cset;
+
+	lockdep_assert_held(&css_set_lock);
+
+	rcu_read_lock();
+
+	cset = current->nsproxy->cgroup_ns->root_cset;
+	if (cset == &init_css_set) {
+		res = &root->cgrp;
+	} else {
+		struct cgrp_cset_link *link;
+
+		list_for_each_entry(link, &cset->cgrp_links, cgrp_link) {
+			struct cgroup *c = link->cgrp;
+
+			if (c->root == root) {
+				res = c;
+				break;
+			}
+		}
+	}
+	rcu_read_unlock();
+
+	BUG_ON(!res);
+	return res;
+}
+
 /* look up cgroup associated with given css_set on the specified hierarchy */
 static struct cgroup *cset_cgroup_from_root(struct css_set *cset,
 					    struct cgroup_root *root)
@@ -1598,13 +1633,11 @@ static int cgroup_show_path(struct seq_file *sf, struct kernfs_node *kf_node,
 {
 	int len = 0, ret = 0;
 	char *buf = NULL;
-	struct cgroup_namespace *ns = current->nsproxy->cgroup_ns;
 	struct cgroup_root *kf_cgroot = cgroup_root_from_kf(kf_root);
 	struct cgroup *ns_cgroup;
 
-	mutex_lock(&cgroup_mutex);
 	spin_lock_bh(&css_set_lock);
-	ns_cgroup = cset_cgroup_from_root(ns->root_cset, kf_cgroot);
+	ns_cgroup = current_cgns_cgroup_from_root(kf_cgroot);
 	len = kernfs_path_from_node(kf_node, ns_cgroup->kn, NULL, 0);
 	if (len > 0)
 		buf = kmalloc(len + 1, GFP_ATOMIC);
@@ -1612,7 +1645,6 @@ static int cgroup_show_path(struct seq_file *sf, struct kernfs_node *kf_node,
 		ret = kernfs_path_from_node(kf_node, ns_cgroup->kn, buf, len + 1);
 
 	spin_unlock_bh(&css_set_lock);
-	mutex_unlock(&cgroup_mutex);
 
 	if (len <= 0)
 		return len;
