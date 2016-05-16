@@ -86,6 +86,7 @@ struct vfs_cap_data {
  */
 struct vfs_ns_cap_data {
        __le32 magic_etc;
+       __le32 rootid;
        struct {
                __le32 permitted;    /* Little endian */
                __le32 inheritable;  /* Little endian */

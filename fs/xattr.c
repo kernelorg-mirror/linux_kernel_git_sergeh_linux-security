@@ -73,6 +73,9 @@ xattr_permission(struct inode *inode, const char *name, int mask)
 	return inode_permission(inode, mask);
 }
 
+extern void cap_setxattr_make_nscap(struct dentry *dentry, const void *value,
+		size_t size, void **wvalue, size_t *wsize);
+
 /**
  *  __vfs_setxattr_noperm - perform setxattr operation without performing
  *  permission checks.
@@ -94,13 +97,28 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 {
 	struct inode *inode = dentry->d_inode;
 	int error = -EOPNOTSUPP;
+	void *wvalue = NULL;
+	size_t wsize = 0;
 	int issec = !strncmp(name, XATTR_SECURITY_PREFIX,
 				   XATTR_SECURITY_PREFIX_LEN);
 
-	if (issec)
+	if (issec) {
 		inode->i_flags &= ~S_NOSEC;
+		/* if root in a non-init user_ns tries to set
+		 * security.capability, write a security.nscapability
+		 * in its place */
+		if (!strcmp(name, "security.capability") &&
+				current_user_ns() != &init_user_ns) {
+			cap_setxattr_make_nscap(dentry, value, size, &wvalue, &wsize);
+			if (!wvalue)
+				return -EPERM;
+			value = wvalue;
+			size = wsize;
+			name = "security.nscapability";
+		}
+	}
 	if (inode->i_op->setxattr) {
-		error = inode->i_op->setxattr(dentry, name, value, size, flags);
+		error = inode->i_op->setxattr(dentry, name, wvalue ? wvalue : value, size, flags);
 		if (!error) {
 			fsnotify_xattr(dentry);
 			security_inode_post_setxattr(dentry, name, value,
@@ -114,6 +132,8 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 			fsnotify_xattr(dentry);
 	}
 
+	if (wvalue)
+		kfree(wvalue);
 	return error;
 }
 
