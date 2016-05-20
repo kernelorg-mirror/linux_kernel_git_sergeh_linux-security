@@ -454,12 +454,9 @@ void cap_setxattr_make_nscap(struct dentry *dentry, const void *value, size_t si
 	const struct vfs_cap_data *cap = value;
 	__u32 magic, nsmagic;
 	struct user_namespace *ns = current_user_ns();
-	struct inode *inode = d_backing_inode(dentry);
 	kuid_t rootid;
 
 	if (!value || size != sizeof(struct vfs_cap_data))
-		return;
-	if (!inode || !capable_wrt_inode_uidgid(inode, CAP_SETFCAP))
 		return;
 
 	/* refuse if security.capability exists */

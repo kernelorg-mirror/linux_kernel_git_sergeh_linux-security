@@ -106,6 +106,8 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 		 * in its place */
 		if (!strcmp(name, "security.capability") &&
 				current_user_ns() != &init_user_ns) {
+			if (!capable_wrt_inode_uidgid(inode, CAP_SETFCAP))
+				return -EPERM;
 			cap_setxattr_make_nscap(dentry, value, size, &wvalue, &wsize);
 			if (!wvalue)
 				return -EPERM;
