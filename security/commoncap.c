@@ -466,10 +466,6 @@ static bool refuse_fcap_overwrite(struct inode *inode)
 	struct vfs_ns_cap_data *nscap;
 	__u32 magic_etc;
 
-	/* don't refuse for host root */
-	if (capable(CAP_SETFCAP))
-		return false;
-
 	ret = cap_inode_getsecurity(inode, "security.capability", &tmpbuf, true);
 	if (ret < 0)
 		return false;
