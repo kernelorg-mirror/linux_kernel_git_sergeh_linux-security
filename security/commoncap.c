@@ -511,6 +511,19 @@ static bool refuse_fcap_overwrite(struct inode *inode)
 	return false;
 }
 
+static kuid_t rootid_from_xattr(const void *value, size_t size,
+				struct user_namespace *ns)
+{
+	const struct vfs_ns_cap_data *nscap = value;
+	uid_t rootid;
+
+	if (size != XATTR_CAPS_SZ_4)
+		return make_kuid(ns, 0);
+
+	rootid = le32_to_cpu(nscap->rootid);
+	return make_kuid(ns, rootid);
+}
+
 /*
  * Use requested a write of security.capability but is in a non-init
  * userns.  So we construct and write a v4.
@@ -539,11 +552,12 @@ void cap_setxattr_make_nscap(struct dentry *dentry, const void *value, size_t si
 	if (refuse_fcap_overwrite(inode))
 		return;
 
-	rootid = make_kuid(ns, 0);
+	rootid = rootid_from_xattr(value, size, ns);
 	if (!uid_valid(rootid))
 		return;
 
-	nscap = kmalloc(sizeof(struct vfs_ns_cap_data), GFP_ATOMIC);
+	*wsize = sizeof(struct vfs_ns_cap_data);
+	nscap = kmalloc(*wsize, GFP_ATOMIC);
 	if (!nscap)
 		return;
 	nscap->rootid = cpu_to_le32(from_kuid(&init_user_ns, rootid));
@@ -554,7 +568,6 @@ void cap_setxattr_make_nscap(struct dentry *dentry, const void *value, size_t si
 	nscap->magic_etc = cpu_to_le32(nsmagic);
 	memcpy(&nscap->data, &cap->data, sizeof(__le32) * 2 * VFS_CAP_U32);
 
-	*wsize = sizeof(struct vfs_ns_cap_data);
 	*wvalue = nscap;
 	return;
 }
