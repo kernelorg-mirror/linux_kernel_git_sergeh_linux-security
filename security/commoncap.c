@@ -391,7 +391,7 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 
 	if (ret < 0)
 		return ret;
-	if (ret != size) {
+	if (ret == sizeof(struct vfs_cap_data)) {
 		/*
 		 * If this is sizeof(vfs_cap_data) then we're ok with the
 		 * on-disk value, so let the i_op return that.  We could
@@ -399,8 +399,14 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 		 * complicates the '@alloc' case, and this is not a hot path,
 		 * so punting at least for now.
 		 */
+		if (alloc)
+			*buffer = tmpbuf;
+		else
+			kfree(tmpbuf);
+		return size;
+	} else if (ret != size) {
 		kfree(tmpbuf);
-		return -EOPNOTSUPP;
+		return -EINVAL;
 	}
 
 	nscap = (struct vfs_ns_cap_data *) tmpbuf;
