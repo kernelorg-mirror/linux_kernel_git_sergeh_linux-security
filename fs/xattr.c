@@ -179,11 +179,17 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 	if (issec) {
 		inode->i_flags &= ~S_NOSEC;
 
-		/* if root in a non-init user_ns tries to set
-		 * security.capability, write the virtualized
-		 * xattr in its place */
-		if (!strcmp(name, "security.capability") &&
-				current_user_ns() != &init_user_ns) {
+		if (!strcmp(name, "security.capability")) {
+			/* Normal semantics for caller in init_user_ns */
+			if (current_user_ns() == &init_user_ns) {
+				if (!capable(CAP_SETFCAP))
+					return -EPERM;
+				return 0;
+			}
+
+			/* Root in a non-init user_ns asks to set
+			 * security.capability, so we write the virtualized
+			 * xattr in its place */
 			cap_setxattr_make_nscap(dentry, value, size, &wvalue, &wsize);
 			if (!wvalue)
 				return -EPERM;

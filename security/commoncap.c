@@ -945,14 +945,9 @@ int cap_inode_setxattr(struct dentry *dentry, const char *name,
 			sizeof(XATTR_SECURITY_PREFIX) - 1) != 0)
 		return 0;
 
-	if (strcmp(name, XATTR_NAME_CAPS) == 0) {
-		/* Write from initial user_ns will in * __vfs_setxattr_noperm()
-		 * be diverted to a nscap write.  But from initial user_ns we
-		 * require CAP_SETFCAP targeted at init_user_ns */
-		if (current_user_ns() == &init_user_ns && !capable(CAP_SETFCAP))
-			return -EPERM;
+	// For XATTR_NAME_CAPS the check will be done in __vfs_setxattr_noperm()
+	if (strcmp(name, XATTR_NAME_CAPS) == 0)
 		return 0;
-	}
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
