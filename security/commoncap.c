@@ -523,7 +523,7 @@ static bool refuse_fcap_overwrite(struct inode *inode)
 		return true;
 	}
 	if (ret != sizeof(struct vfs_ns_cap_data)) {
-		/* Corrupt v4 fscap.  Permit fixup */
+		/* Corrupt v3 fscap.  Permit fixup */
 		kfree(tmpbuf);
 		return false;
 	}
@@ -548,7 +548,7 @@ static kuid_t rootid_from_xattr(const void *value, size_t size,
 
 /*
  * Use requested a write of security.capability but is in a non-init
- * userns.  So we construct and write a v4.
+ * userns.  So we construct and write a v3.
  *
  * If all is ok, wvalue has an allocated new value.  Otherwise, wvalue
  * is NULL.
