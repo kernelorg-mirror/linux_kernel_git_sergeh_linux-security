@@ -672,6 +672,7 @@ int get_vfs_caps_from_disk(const struct dentry *dentry, struct cpu_vfs_cap_data 
 
 	cpu_caps->magic_etc = magic_etc = le32_to_cpu(caps->magic_etc);
 
+	rootkuid = make_kuid(fs_ns, 0);
 	switch (magic_etc & VFS_CAP_REVISION_MASK) {
 	case VFS_CAP_REVISION_1:
 		if (size != XATTR_CAPS_SZ_1)
@@ -681,28 +682,23 @@ int get_vfs_caps_from_disk(const struct dentry *dentry, struct cpu_vfs_cap_data 
 	case VFS_CAP_REVISION_2:
 		if (size != XATTR_CAPS_SZ_2)
 			return -EINVAL;
-		if (fs_ns != &init_user_ns) {
-			/* unpriv user mounted this fs;  make sure they
-			 * own current user_ns */
-			rootkuid = make_kuid(fs_ns, 0);
-			if (!rootid_owns_currentns(rootkuid))
-				return -ENODATA;
-		}
 		tocopy = VFS_CAP_U32_2;
 		break;
 	case VFS_CAP_REVISION_3:
 		if (size != XATTR_CAPS_SZ_3)
 			return -EINVAL;
 		tocopy = VFS_CAP_U32_3;
-
 		rootkuid = make_kuid(fs_ns, le32_to_cpu(nscaps->rootid));
-		if (!rootid_owns_currentns(rootkuid))
-			return -ENODATA;
 		break;
 
 	default:
 		return -EINVAL;
 	}
+	/* Limit the caps to the mounter of the filesystem
+	 * or the more limited uid specified in the xattr.
+	 */
+	if (!rootid_owns_currentns(rootkuid))
+		return -ENODATA;
 
 	CAP_FOR_EACH_U32(i) {
 		if (i >= tocopy)
