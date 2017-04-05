@@ -184,17 +184,17 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 			if (current_user_ns() == &init_user_ns) {
 				if (!capable(CAP_SETFCAP))
 					return -EPERM;
-				return 0;
+			} else {
+				/* Root in a non-init user_ns asks to set
+				 * security.capability, so we write the virtualized
+				 * xattr in its place */
+				cap_setxattr_make_nscap(dentry, value, size,
+						&wvalue, &wsize);
+				if (!wvalue)
+					return -EPERM;
+				value = wvalue;
+				size = wsize;
 			}
-
-			/* Root in a non-init user_ns asks to set
-			 * security.capability, so we write the virtualized
-			 * xattr in its place */
-			cap_setxattr_make_nscap(dentry, value, size, &wvalue, &wsize);
-			if (!wvalue)
-				return -EPERM;
-			value = wvalue;
-			size = wsize;
 		}
 	}
 
