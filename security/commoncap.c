@@ -350,36 +350,6 @@ static bool rootid_owns_currentns(kuid_t kroot)
 	return false;
 }
 
-static char *cap_convert_v2_v3(char *buf, struct inode *inode)
-{
-	char *ret;
-	struct vfs_ns_cap_data *v3;
-	struct vfs_cap_data *v2 = (struct vfs_cap_data *)buf;
-	kuid_t krootid;
-
-	krootid = make_kuid(inode->i_sb->s_user_ns, 0);
-	if (!uid_valid(krootid)) {
-		ret = ERR_PTR(-EPERM);
-		goto out;
-	}
-	ret = kmalloc(sizeof(struct vfs_ns_cap_data), GFP_NOFS);
-	if (!ret) {
-		ret = ERR_PTR(-ENOMEM);
-		goto out;
-	}
-	v3 = (struct vfs_ns_cap_data *)ret;
-
-	memcpy(&v3->data, &v2->data, sizeof(v2->data));
-	v3->magic_etc = VFS_CAP_REVISION_3;
-	if (v2->magic_etc & VFS_CAP_FLAGS_EFFECTIVE)
-		v3->magic_etc |= VFS_CAP_FLAGS_EFFECTIVE;
-	v3->rootid = from_kuid(&init_user_ns, krootid);
-
-out:
-	kfree(buf);
-	return ret;
-}
-
 /*
  * getsecurity: We are called for security.* before any attempt to read the
  * xattr from the inode itself.
@@ -425,11 +395,7 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 		else
 			kfree(tmpbuf);
 		return ret;
-	} else if (ret == sizeof(struct vfs_cap_data)) {
-		tmpbuf = cap_convert_v2_v3(tmpbuf, inode);
-		if (!tmpbuf)
-			return -EPERM;
-	} else if (ret != size) {
+	} else if (ret != sizeof(struct vfs_ns_cap_data)) {
 		kfree(tmpbuf);
 		return -EINVAL;
 	}
