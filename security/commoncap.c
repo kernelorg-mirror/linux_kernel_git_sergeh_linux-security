@@ -441,7 +441,7 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 	/* If the root kuid maps to a valid uid in current ns, then return
 	 * this as a nscap. */
 	mappedroot = from_kuid(current_user_ns(), kroot);
-	if (mappedroot != (uid_t)-1) {
+	if (mappedroot != (uid_t)-1 && mappedroot != (uid_t)0) {
 		if (alloc) {
 			*buffer = tmpbuf;
 			nscap->rootid = cpu_to_le32(mappedroot);
