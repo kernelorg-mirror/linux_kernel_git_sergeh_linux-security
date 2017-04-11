@@ -493,6 +493,15 @@ static bool refuse_fcap_overwrite(struct inode *inode)
 		kfree(tmpbuf);
 		return false;
 	}
+
+	/*
+	 * I'm not convinced about the below [seh] - If the caller is
+	 * privileged wrt the inode->i-sb->s_user_ns then it should be
+	 * allowed to change the fcap regardless of the kuid stored in
+	 * the v3 cap, right?  Should the rootid be updated to the
+	 * inode->i_sb->s_user_ns root kuid?  Be left alone?  I don't
+	 * know.
+	 */
 	root = le32_to_cpu(nscap->rootid);
 	kroot = make_kuid(&init_user_ns, root);
 	should_refuse = !kuid_has_mapping(current_user_ns(), kroot);
