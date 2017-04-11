@@ -387,7 +387,7 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 		return ret;
 
 	fs_ns = inode->i_sb->s_user_ns;
-	if (ret == sizeof(struct vfs_cap_data) && fs_ns == &init_user_ns) {
+	if (ret == sizeof(struct vfs_cap_data)) {
 		/* If this is sizeof(vfs_cap_data) then we're ok with the
 		 * on-disk value, so return that.  */
 		if (alloc)
