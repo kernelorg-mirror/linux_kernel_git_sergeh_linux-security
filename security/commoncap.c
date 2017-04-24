@@ -456,14 +456,12 @@ static kuid_t rootid_from_xattr(const void *value, size_t size,
 }
 
 /*
- * User requested a write of security.capability.
+ * User requested a write of security.capability.  If needed, update the
+ * xattr to change from v2 to v3, or to fixup the v3 rootid.
  *
- * If all is ok, we return 0.  If the capability needs to be converted,
- * wvalue will be allocated (and needs to be freed) with the new value.
- * On error, return < 0.
+ * If all is ok, we return 0, on error return < 0.
  */
-int cap_setxattr_convert_nscap(struct dentry *dentry, const void *value, size_t size,
-				    void **wvalue, size_t *wsize)
+int cap_convert_nscap(struct dentry *dentry, void **ivalue, size_t *isize)
 {
 	struct vfs_ns_cap_data *nscap;
 	uid_t nsrootid;
@@ -473,6 +471,8 @@ int cap_setxattr_convert_nscap(struct dentry *dentry, const void *value, size_t 
 	struct user_namespace *task_ns = current_user_ns(),
 		*fs_ns = inode->i_sb->s_user_ns;
 	kuid_t rootid;
+	size_t size = *isize, newsize;
+	void *value = *ivalue;
 
 	if (!value)
 		return -EINVAL;
@@ -499,8 +499,8 @@ int cap_setxattr_convert_nscap(struct dentry *dentry, const void *value, size_t 
 	if (nsrootid == -1)
 		return -EINVAL;
 
-	*wsize = sizeof(struct vfs_ns_cap_data);
-	nscap = kmalloc(*wsize, GFP_ATOMIC);
+	newsize = sizeof(struct vfs_ns_cap_data);
+	nscap = kmalloc(newsize, GFP_ATOMIC);
 	if (!nscap)
 		return -ENOMEM;
 	nscap->rootid = cpu_to_le32(nsrootid);
@@ -511,7 +511,9 @@ int cap_setxattr_convert_nscap(struct dentry *dentry, const void *value, size_t 
 	nscap->magic_etc = cpu_to_le32(nsmagic);
 	memcpy(&nscap->data, &cap->data, sizeof(__le32) * 2 * VFS_CAP_U32);
 
-	*wvalue = nscap;
+	kvfree(*ivalue);
+	*ivalue = nscap;
+	*isize = newsize;
 	return 0;
 }
 

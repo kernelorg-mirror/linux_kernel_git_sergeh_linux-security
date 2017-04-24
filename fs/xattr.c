@@ -445,17 +445,9 @@ setxattr(struct dentry *d, const char __user *name, const void __user *value,
 		    (strcmp(kname, XATTR_NAME_POSIX_ACL_DEFAULT) == 0))
 			posix_acl_fix_xattr_from_user(kvalue, size);
 		else if (strcmp(kname, XATTR_NAME_CAPS) == 0) {
-			char *wvalue = NULL;
-			size_t wsize;
-			error = cap_setxattr_convert_nscap(d, kvalue, size,
-			                                   &wvalue, &wsize);
+			error = cap_convert_nscap(d, &kvalue, &size);
 			if (error < 0)
 				goto out;
-			if (wvalue) {
-				kvfree(kvalue);
-				kvalue = wvalue;
-				size = wsize;
-			}
 		}
 	}
 
