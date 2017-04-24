@@ -179,7 +179,7 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 	if (issec) {
 		inode->i_flags &= ~S_NOSEC;
 
-		if (!strcmp(name, "security.capability")) {
+		if (!strcmp(name, XATTR_NAME_CAPS)) {
 			error = cap_setxattr_convert_nscap(dentry, value, size,
 					&wvalue, &wsize);
 			if (error < 0)

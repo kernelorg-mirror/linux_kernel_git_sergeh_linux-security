@@ -367,6 +367,7 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 	kuid_t kroot;
 	uid_t root, mappedroot;
 	char *tmpbuf = NULL;
+	struct vfs_cap_data *cap;
 	struct vfs_ns_cap_data *nscap;
 	struct dentry *dentry;
 	struct user_namespace *fs_ns;
@@ -379,14 +380,16 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 		return -EINVAL;
 
 	size = sizeof(struct vfs_ns_cap_data);
-	ret = vfs_getxattr_alloc(dentry, "security.capability",
+	ret = vfs_getxattr_alloc(dentry, XATTR_NAME_CAPS,
 				 &tmpbuf, size, GFP_NOFS);
 
 	if (ret < 0)
 		return ret;
 
 	fs_ns = inode->i_sb->s_user_ns;
-	if (ret == sizeof(struct vfs_cap_data)) {
+	cap = (struct vfs_cap_data *) tmpbuf;
+	if ((ret == sizeof(struct vfs_cap_data)) &&
+	    (cap->magic_etc == cpu_to_le32(VFS_CAP_REVISION_2))) {
 		/* If this is sizeof(vfs_cap_data) then we're ok with the
 		 * on-disk value, so return that.  */
 		if (alloc)
@@ -394,7 +397,8 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 		else
 			kfree(tmpbuf);
 		return ret;
-	} else if (ret != sizeof(struct vfs_ns_cap_data)) {
+	} else if ((ret != sizeof(struct vfs_ns_cap_data)) ||
+	           (cap->magic_etc != cpu_to_le32(VFS_CAP_REVISION_3))) {
 		kfree(tmpbuf);
 		return -EINVAL;
 	}
@@ -474,14 +478,18 @@ int cap_setxattr_convert_nscap(struct dentry *dentry, const void *value, size_t 
 		return -EINVAL;
 	if (size != XATTR_CAPS_SZ_2 && size != XATTR_CAPS_SZ_3)
 		return -EINVAL;
+	if ((size == XATTR_CAPS_SZ_2) &&
+	    (cap->magic_etc != cpu_to_le32(VFS_CAP_REVISION_2)))
+		return -EINVAL;
+	if ((size == XATTR_CAPS_SZ_3) &&
+	    (cap->magic_etc != cpu_to_le32(VFS_CAP_REVISION_3)))
+		return -EINVAL;
 	if (!capable_wrt_inode_uidgid(inode, CAP_SETFCAP))
 		return -EPERM;
-	if (size == XATTR_CAPS_SZ_2) {
-		/* require CAP_SETFCAP for writing a new v2 xattr */
+	if (size == XATTR_CAPS_SZ_2)
 		if (ns_capable(inode->i_sb->s_user_ns, CAP_SETFCAP))
+			/* user is privileged, just write the v2 */
 			return 0;
-		return -EPERM;
-	}
 
 	rootid = rootid_from_xattr(value, size, task_ns);
 	if (!uid_valid(rootid))
@@ -857,7 +865,10 @@ int cap_inode_setxattr(struct dentry *dentry, const char *name,
 			sizeof(XATTR_SECURITY_PREFIX) - 1) != 0)
 		return 0;
 
-	// For XATTR_NAME_CAPS the check will be done in __vfs_setxattr_noperm()
+	/*
+	 * For XATTR_NAME_CAPS the check will be done in
+	 * __vfs_setxattr_noperm()
+	 */
 	if (strcmp(name, XATTR_NAME_CAPS) == 0)
 		return 0;
 

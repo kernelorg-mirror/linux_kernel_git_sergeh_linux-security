@@ -13,7 +13,6 @@
 #define _LINUX_CAPABILITY_H
 
 #include <uapi/linux/capability.h>
-#include <linux/uidgid.h>
 
 #define _KERNEL_CAPABILITY_VERSION _LINUX_CAPABILITY_VERSION_3
 #define _KERNEL_CAPABILITY_U32S    _LINUX_CAPABILITY_U32S_3
