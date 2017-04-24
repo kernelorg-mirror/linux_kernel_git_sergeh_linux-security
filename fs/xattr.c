@@ -170,29 +170,12 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 		const void *value, size_t size, int flags)
 {
 	struct inode *inode = dentry->d_inode;
-	int error;
-	void *wvalue = NULL;
-	size_t wsize = 0;
+	int error = -EAGAIN;
 	int issec = !strncmp(name, XATTR_SECURITY_PREFIX,
 				   XATTR_SECURITY_PREFIX_LEN);
 
-	if (issec) {
+	if (issec)
 		inode->i_flags &= ~S_NOSEC;
-
-		if (!strcmp(name, XATTR_NAME_CAPS)) {
-			error = cap_setxattr_convert_nscap(dentry, value, size,
-					&wvalue, &wsize);
-			if (error < 0)
-				return error;
-			if (wvalue) {
-				value = wvalue;
-				size = wsize;
-			}
-		}
-	}
-
-	error = -EAGAIN;
-
 	if (inode->i_opflags & IOP_XATTR) {
 		error = __vfs_setxattr(dentry, inode, name, value, size, flags);
 		if (!error) {
@@ -201,10 +184,8 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 						     size, flags);
 		}
 	} else {
-		if (unlikely(is_bad_inode(inode))) {
-			error = -EIO;
-			goto out;
-		}
+		if (unlikely(is_bad_inode(inode)))
+			return -EIO;
 	}
 	if (error == -EAGAIN) {
 		error = -EOPNOTSUPP;
@@ -219,10 +200,9 @@ int __vfs_setxattr_noperm(struct dentry *dentry, const char *name,
 		}
 	}
 
-out:
-	kfree(wvalue);
 	return error;
 }
+
 
 int
 vfs_setxattr(struct dentry *dentry, const char *name, const void *value,
@@ -464,6 +444,19 @@ setxattr(struct dentry *d, const char __user *name, const void __user *value,
 		if ((strcmp(kname, XATTR_NAME_POSIX_ACL_ACCESS) == 0) ||
 		    (strcmp(kname, XATTR_NAME_POSIX_ACL_DEFAULT) == 0))
 			posix_acl_fix_xattr_from_user(kvalue, size);
+		else if (strcmp(kname, XATTR_NAME_CAPS) == 0) {
+			char *wvalue = NULL;
+			size_t wsize;
+			error = cap_setxattr_convert_nscap(d, kvalue, size,
+			                                   &wvalue, &wsize);
+			if (error < 0)
+				goto out;
+			if (wvalue) {
+				kvfree(kvalue);
+				kvalue = wvalue;
+				size = wsize;
+			}
+		}
 	}
 
 	error = vfs_setxattr(d, kname, kvalue, size, flags);
