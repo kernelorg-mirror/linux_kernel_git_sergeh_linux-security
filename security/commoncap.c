@@ -455,6 +455,25 @@ static kuid_t rootid_from_xattr(const void *value, size_t size,
 	return make_kuid(task_ns, rootid);
 }
 
+static bool sansflags(__le32 m)
+{
+	return m & ~VFS_CAP_FLAGS_EFFECTIVE;
+}
+
+static bool validheader(size_t size, __le32 magic)
+{
+	__u32 m = le32_to_cpu(magic);
+
+	switch (size) {
+		case XATTR_CAPS_SZ_2:
+			return sansflags(m) == VFS_CAP_REVISION_2;
+		case XATTR_CAPS_SZ_3:
+			return sansflags(m) == VFS_CAP_REVISION_3;
+		default:
+			return false;
+	}
+}
+
 /*
  * User requested a write of security.capability.  If needed, update the
  * xattr to change from v2 to v3, or to fixup the v3 rootid.
@@ -472,17 +491,10 @@ int cap_convert_nscap(struct dentry *dentry, void **ivalue, size_t *isize)
 		*fs_ns = inode->i_sb->s_user_ns;
 	kuid_t rootid;
 	size_t size = *isize, newsize;
-	void *value = *ivalue;
 
-	if (!value)
+	if (!*ivalue)
 		return -EINVAL;
-	if (size != XATTR_CAPS_SZ_2 && size != XATTR_CAPS_SZ_3)
-		return -EINVAL;
-	if ((size == XATTR_CAPS_SZ_2) &&
-	    (cap->magic_etc != cpu_to_le32(VFS_CAP_REVISION_2)))
-		return -EINVAL;
-	if ((size == XATTR_CAPS_SZ_3) &&
-	    (cap->magic_etc != cpu_to_le32(VFS_CAP_REVISION_3)))
+	if (!validheader(size, cap->magic_etc))
 		return -EINVAL;
 	if (!capable_wrt_inode_uidgid(inode, CAP_SETFCAP))
 		return -EPERM;
@@ -491,7 +503,7 @@ int cap_convert_nscap(struct dentry *dentry, void **ivalue, size_t *isize)
 			/* user is privileged, just write the v2 */
 			return 0;
 
-	rootid = rootid_from_xattr(value, size, task_ns);
+	rootid = rootid_from_xattr(*ivalue, size, task_ns);
 	if (!uid_valid(rootid))
 		return -EINVAL;
 
