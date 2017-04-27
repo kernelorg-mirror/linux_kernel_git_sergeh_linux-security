@@ -455,7 +455,7 @@ static kuid_t rootid_from_xattr(const void *value, size_t size,
 	return make_kuid(task_ns, rootid);
 }
 
-static bool sansflags(__le32 m)
+static __u32 sansflags(__u32 m)
 {
 	return m & ~VFS_CAP_FLAGS_EFFECTIVE;
 }
