@@ -349,6 +349,28 @@ static bool rootid_owns_currentns(kuid_t kroot)
 	return false;
 }
 
+static __u32 sansflags(__u32 m)
+{
+	return m & ~VFS_CAP_FLAGS_EFFECTIVE;
+}
+
+static bool is_v2header(size_t size, __le32 magic)
+{
+	__u32 m = le32_to_cpu(magic);
+	if (size != XATTR_CAPS_SZ_2)
+		return false;
+	return sansflags(m) == VFS_CAP_REVISION_2;
+}
+
+static bool is_v3header(size_t size, __le32 magic)
+{
+	__u32 m = le32_to_cpu(magic);
+
+	if (size != XATTR_CAPS_SZ_3)
+		return false;
+	return sansflags(m) == VFS_CAP_REVISION_3;
+}
+
 /*
  * getsecurity: We are called for security.* before any attempt to read the
  * xattr from the inode itself.
@@ -388,8 +410,7 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 
 	fs_ns = inode->i_sb->s_user_ns;
 	cap = (struct vfs_cap_data *) tmpbuf;
-	if ((ret == sizeof(struct vfs_cap_data)) &&
-	    (cap->magic_etc == cpu_to_le32(VFS_CAP_REVISION_2))) {
+	if (is_v2header(ret, cap->magic_etc)) {
 		/* If this is sizeof(vfs_cap_data) then we're ok with the
 		 * on-disk value, so return that.  */
 		if (alloc)
@@ -397,8 +418,7 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 		else
 			kfree(tmpbuf);
 		return ret;
-	} else if ((ret != sizeof(struct vfs_ns_cap_data)) ||
-	           (cap->magic_etc != cpu_to_le32(VFS_CAP_REVISION_3))) {
+	} else if (!is_v3header(ret, cap->magic_etc)) {
 		kfree(tmpbuf);
 		return -EINVAL;
 	}
@@ -455,23 +475,9 @@ static kuid_t rootid_from_xattr(const void *value, size_t size,
 	return make_kuid(task_ns, rootid);
 }
 
-static __u32 sansflags(__u32 m)
-{
-	return m & ~VFS_CAP_FLAGS_EFFECTIVE;
-}
-
 static bool validheader(size_t size, __le32 magic)
 {
-	__u32 m = le32_to_cpu(magic);
-
-	switch (size) {
-		case XATTR_CAPS_SZ_2:
-			return sansflags(m) == VFS_CAP_REVISION_2;
-		case XATTR_CAPS_SZ_3:
-			return sansflags(m) == VFS_CAP_REVISION_3;
-		default:
-			return false;
-	}
+	return is_v2header(size, magic) || is_v3header(size, magic);
 }
 
 /*
