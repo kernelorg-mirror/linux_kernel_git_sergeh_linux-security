@@ -478,9 +478,9 @@ static bool validheader(size_t size, __le32 magic)
  * User requested a write of security.capability.  If needed, update the
  * xattr to change from v2 to v3, or to fixup the v3 rootid.
  *
- * If all is ok, we return 0, on error return < 0.
+ * If all is ok, we return the new size, on error return < 0.
  */
-int cap_convert_nscap(struct dentry *dentry, void **ivalue, size_t *isize)
+int cap_convert_nscap(struct dentry *dentry, void **ivalue, size_t size)
 {
 	struct vfs_ns_cap_data *nscap;
 	uid_t nsrootid;
@@ -490,7 +490,7 @@ int cap_convert_nscap(struct dentry *dentry, void **ivalue, size_t *isize)
 	struct user_namespace *task_ns = current_user_ns(),
 		*fs_ns = inode->i_sb->s_user_ns;
 	kuid_t rootid;
-	size_t size = *isize, newsize;
+	size_t newsize;
 
 	if (!*ivalue)
 		return -EINVAL;
@@ -525,8 +525,7 @@ int cap_convert_nscap(struct dentry *dentry, void **ivalue, size_t *isize)
 
 	kvfree(*ivalue);
 	*ivalue = nscap;
-	*isize = newsize;
-	return 0;
+	return newsize;
 }
 
 /*
