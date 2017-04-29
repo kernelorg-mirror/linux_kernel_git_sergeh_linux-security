@@ -507,7 +507,7 @@ int cap_convert_nscap(struct dentry *dentry, void **ivalue, size_t size)
 	if (size == XATTR_CAPS_SZ_2)
 		if (ns_capable(inode->i_sb->s_user_ns, CAP_SETFCAP))
 			/* user is privileged, just write the v2 */
-			return 0;
+			return size;
 
 	rootid = rootid_from_xattr(*ivalue, size, task_ns);
 	if (!uid_valid(rootid))
