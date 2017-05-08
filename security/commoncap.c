@@ -402,15 +402,16 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 		return -EINVAL;
 
 	size = sizeof(struct vfs_ns_cap_data);
-	ret = vfs_getxattr_alloc(dentry, XATTR_NAME_CAPS,
+	ret = (int) vfs_getxattr_alloc(dentry, XATTR_NAME_CAPS,
 				 &tmpbuf, size, GFP_NOFS);
+	dput(dentry);
 
 	if (ret < 0)
 		return ret;
 
 	fs_ns = inode->i_sb->s_user_ns;
 	cap = (struct vfs_cap_data *) tmpbuf;
-	if (is_v2header(ret, cap->magic_etc)) {
+	if (is_v2header((size_t) ret, cap->magic_etc)) {
 		/* If this is sizeof(vfs_cap_data) then we're ok with the
 		 * on-disk value, so return that.  */
 		if (alloc)
@@ -418,7 +419,7 @@ int cap_inode_getsecurity(struct inode *inode, const char *name, void **buffer,
 		else
 			kfree(tmpbuf);
 		return ret;
-	} else if (!is_v3header(ret, cap->magic_etc)) {
+	} else if (!is_v3header((size_t) ret, cap->magic_etc)) {
 		kfree(tmpbuf);
 		return -EINVAL;
 	}
